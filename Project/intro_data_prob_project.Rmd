@@ -1,0 +1,222 @@
+---
+title: "Exploring the BRFSS data"
+subtitle: "Jonathan V. Smith, 12.24.2016"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+## Setup
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+### Load data
+
+```{r load-data}
+load("brfss2013.RData")
+```
+
+
+## Part 1: The Data
+According to introductory material in the the BRFSS cookbook, the Behavioral Risk Factor Surveillance System (BRFSS) data is collected via monthly telephone interviews over a short period of time, usually one to three months.  Some interviews are conducted over land lines and some over cell phones.  For landline interviews, an adult from the household is randomly selected to complete the survey.      
+
+The "BRFSS is an ongoing surveillance system designed to measure behavioral risk factors for the non-institutionalized adult population (18 years of age and older) residing in the US."    
+
+So, the data can only be used to make inferences about this group and not, for example, children under the age of 18 except in limited cases where new questions for people under 18 have been added.    
+
+Some other observations regarding issues / limitations of the data:   
+
+Its unclear how 'household' is defined.    
+
+The data may be biased due to time of year.  For example, peoples' sense of health and well-being may follow seasonal patterns.  People may tend to feel more depressed in the winter time for example. So, you may not be able to generalize the data to make predictions about perceptions of health throughout the calendar year.   
+
+Data may be biased by geography.  For example, people in Southern States may have very different health ahd dietary characteristics than people in Colorado.  So, you have to be careful not to generalize findings in one geograpy to the rest of the country.    
+
+Respondents in the survey may not be honest about the questions, particularly given the personal nature of many of the questions.     
+
+The data is incomplete for many questions because respondents chose not to respond.  
+Participants may simply decline to take the survey which means the respondents are not truly random.   
+
+People's view of their own health may be subjective, therefore many of the answers may not be considered objectivly true regarding respondents health.   
+
+Random assignments was NOT used in this study.  Survey respondents were randomly selected but they were not randomly assigned to different groups.   
+
+* * *
+
+## Part 2: Research questions
+
+**Research quesion 1:**
+Is there a positive correlation between consuming soda and number of days of depression?  If there is a positive correlation between consuming sugary drinks and days a person felt depressed, this information could be used to drive further research and to potentially focus public education efforts with respect to the impact of drinking soda (consuming lots of sugar) on mental health.
+
+**Research quesion 2:**
+Do people who report having high cholesterol, on average, eat less dark green vegetables per month?  If so, this could drive further research and public education programs about links between cholesterol levels and vegetable consumption
+
+**Research quesion 3:**
+How does general health compare in my state, Washington, to aggregate data from all states in the survey? Understanding different levels of general health in different states could help direct public health efforts to areas most in need.
+
+* * *
+
+## Part 3: Exploratory data analysis
+
+   
+**Research quesion 1:**
+
+Is there a positive correlation between consuming soda and number of days of depression?   
+Summary answer is No.  See below for methodology and details.   
+
+Relevant information from the cookbook:    
+qlmentl2: How Many Days Depressed In Past 30 Days    
+ssbsugar: How Often Do You Drink Regular Soda Or Pop? - Note this data is coded such that it requires some manipulation before I can complete this analysis. Values are coded either by the day, week or month.  If coded by day, the value is 1 plus the number of drinks per day.  So, 1 soda per day would be coded as 101, 10 per day would be 110. Reports by week start with 2, report by month starts with 3. I need to normalize this data to be sodas per month.  
+
+First, just take a look at the data. You can see the count of depressed days is skewed right with the vast majority of observations at 0 and others widely dispersed. Values reported cluster around multiples of 5, probably just because that is a convenient way to answer the question.
+```{r}
+ggplot(data = brfss2013, aes(x=qlmentl2)) + geom_histogram(binwidth = 1)
+```
+
+Now, take a look at number of sodas consumed, which makes obvious the data needs to be refactored / normalized before analysis
+```{r}
+ggplot(data = brfss2013, aes(x=ssbsugar)) + geom_histogram(binwidth = 5)
+```
+
+Via the following code, I generated a single column of data that shows sodas consumed per month.
+```{r}
+brfss2013 <- brfss2013 %>% mutate(ssbsugarRepInterval=as.integer(ssbsugar/10^2)*100) ##extract first digit 
+brfss2013 <- brfss2013 %>% mutate(ssbsugarValue=ssbsugar-ssbsugarRepInterval)       ##extract values after first digit
+brfss2013 <- brfss2013 %>% mutate(ssbsugarAdjust = ifelse(ssbsugarRepInterval==100, 30, ifelse(ssbsugarRepInterval==200, 4, 1)))##calc adjustment values to I can normalize to drinks per month
+brfss2013 <- brfss2013 %>% mutate(ssbsugarMonthly=ssbsugarAdjust*ssbsugarValue)     ##calcuate monthly values
+ggplot(data=brfss2013, aes(x=ssbsugarMonthly)) + geom_histogram(binwidth = 15)                   ##plot ssbsssugarMonthly
+```
+
+
+```{r}
+brfss2013$ssbsugarAdjust <- NULL                                                    ##clean up temp variables
+brfss2013$ssbsugarRepInterval <- NULL
+brfss2013$ssbsugarValue <- NULL
+```
+
+I plotted scatterplots to view the data.  The first plot below includes all observations reported regarding the number of days respondents felt depressed.  The second plot excludes those with 0 days of depression and those who drink 0 sodas per month.  Neither shows a positive correlation.  Even individuals who reported up to nearly 100 sodas consumed per month varied from high to low counts of depressed days.
+
+```{r}
+ggplot(data = brfss2013, aes(x = ssbsugarMonthly, y=qlmentl2)) + geom_point()   ##scatter plot ssbsugarMonthly vs days depressed in last month
+```
+
+
+```{r}
+nosodaordepress <- brfss2013 %>% filter(ssbsugarMonthly!=0 | qlmentl2!=0) ## filter out people with no depressed days who drank 0 sodas
+ggplot(data=nosodaordepress, aes(x=ssbsugarMonthly, qlmentl2)) + geom_point()
+rm(nosodaordepress)
+```
+   
+
+**Research quesion 2:**
+Do people who report having high cholesterol, on average, eat less dark green vegetables per month?  
+Summary answer: Yes, but only slightly.  People with high cholesterol eat on average of 15.25248 servings of dark green vegetables per month.  People who report not having high cholesterol eat on average 17.50785 servings of dark green vegetables per month.
+
+Relevant data fields:    
+fvgreen: How Many Times Did You Eat Dark Green Vegetables?    
+x_rfchol: High Cholesterol Calculated Variable    
+
+```{r}
+##First normalize fvgreen to be servings consumed per month
+digit1=as.integer(brfss2013$fvgreen/(10^2))*100 ##extract first digit
+digit2and3=as.integer(brfss2013$fvgreen-digit1) ##extract digits 2 and 3
+fvgreenAdjust=ifelse(digit1==100, 30, ifelse(digit1==200, 4, 1)) ## set adjust value to normalize fvgreen to consumption per month
+brfss2013 <- brfss2013 %>% mutate(fvgreenMonthly=fvgreenAdjust*digit2and3)  ##add fvgreenMonthly to data frame
+remove(digit1, digit2and3, fvgreenAdjust)
+
+##***old code I want to save
+##brfss2013CholYandN <- brfss2013 %>% filter(X_rfchol=="Yes" | X_rfchol=="No")
+##brfss2013CholYandN <- brfss2013CholYandN %>% filter(fvgreen!=NA) ## remove NA values
+##barplot(prop.table(table(brfss2013CholYandN$X_rfchol))) ## plot the yes/no data for X_rfchol. I used ##barplot because I could not get categorical data to plot via ggplot2
+
+##check mean fvgreenMonthly for those with and without high cholesterol
+brfss2013CholY <- brfss2013 %>% filter(X_rfchol=="Yes")
+brfss2013CholN <- brfss2013 %>% filter(X_rfchol=="No") ##filter for not high chol
+```
+
+The mean number of servings of dark green vegetables for people WITH high cholesterol is:
+```{r}
+mean(brfss2013CholY$fvgreenMonthly, na.rm=TRUE)
+remove(brfss2013CholY)
+```
+
+The mean number of servings of dark vegetables for people WITHOUT high cholesterol is:
+```{r}
+mean(brfss2013CholN$fvgreenMonthly, na.rm=TRUE)
+remove(brfss2013CholN)
+```
+
+So, there is a difference of less than 2.3 mean servings of dark green vegetables per month among those with and without high cholesterol 
+
+   
+**Research quesion 3:**
+How does general health compare in my state, Washington, to aggregate data from all states in the survey?
+Summary: The mean of general health reported by respondents in Washington is very close (about .7 standard deviations) to the mean reported from all respondents in the survey.
+Relevant fields in survey: genhlth   
+
+First plot general health (genhlth) from all states in the study:
+```{r}
+ggplot(data=brfss2013, aes(x=genhlth)) + geom_histogram(stat="count")
+```
+
+Then plot the same data only for Washington and you will see the distributions are very similar.
+```{r}
+brfss2013WA <- brfss2013 %>% filter(X_state=="Washington")
+ggplot(data=brfss2013WA, aes(x=genhlth)) + geom_histogram(stat="count")
+```
+
+
+Now, lets take a look at the mean and median of general health.  Respondents reported either Excellent, Very Good, Good, Fair or Poor.  In this analysis, these values are mapped to 5,4,3,2,1 respectively.  So, higher mean and median map to higher levels of perceived general health.
+```{r}
+## I can't figure out how to get int value for genhlth so I am creating int values for each category
+brfss2013 <- brfss2013 %>% mutate(genhlth_num= ifelse(genhlth=="Excellent", 5, ifelse(genhlth=="Very Good", 4,ifelse(genhlth=="Good", 3,ifelse(genhlth=="Fair", 2,ifelse(genhlth=="Poor", 1, NA))))))
+```
+
+
+The mean and standard deviation for general health across all states in the study is:
+```{r}
+mean(brfss2013$genhlth_num, na.rm=TRUE)
+sd(brfss2013$genhlth_num, na.rm=TRUE)
+```
+
+The median for general health across all states in the studay is:
+```{r}
+median(brfss2013$genhlth_num, na.rm=TRUE)
+```
+
+The mean for Washington is:
+```{r}
+brfss2013WA <- brfss2013 %>% filter(X_state=="Washington") ##create version of brfssWA with int values for genhlth
+mean(brfss2013WA$genhlth_num, na.rm=TRUE)
+```
+
+So, Washington mean reported general health is within the following number of standard deviations from the mean of general health reported by all respondents.
+```{r}
+(mean(brfss2013WA$genhlth_num, na.rm=TRUE))-(mean(brfss2013$genhlth_num, na.rm=TRUE))/sd(brfss2013$genhlth_num, na.rm=TRUE)
+```
+
+The median for Washington is the same as the median for all respondents:
+```{r}
+median(brfss2013WA$genhlth_num, na.rm=TRUE)
+
+remove(brfss2013WA)
+```
+
+
+Lastly, let's take a look at the mean and median for general health across all states for context. This this tabular view you can see that Missippi reports the lowest mean level of General Health and Washington DC the highest.  Washington State is 38th in the list.
+
+```{r}
+genhlthbystate=brfss2013 %>% group_by(X_state) %>% summarise(genhlth_mean=mean(genhlth_num, na.rm=TRUE), genhlth_median=median(genhlth_num, na.rm=TRUE))
+genhlthbystatesort=(arrange(genhlthbystate, genhlth_mean))
+genhlthbystatesort %>% print(n = nrow(.))
+
+remove(genhlthbystate, genhlthbystatesort)
+```
+
